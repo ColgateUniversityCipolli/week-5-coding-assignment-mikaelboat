@@ -1,0 +1,114 @@
+###########
+# hw5
+###########
+#load packages
+library(jsonlite)
+library(stringr)
+library(tidyverse)
+
+
+#########
+# Step 1
+#########
+current.filename <- "The Front Bottoms-Talon Of The Hawk-Au Revoir (Adios).json"
+current.filename <- str_split(current.filename, "-", simplify = T)
+
+artist <- current.filename[1]
+album <- current.filename[2]
+track <- current.filename[3]
+
+json_file <- fromJSON("EssentiaOutput/The Front Bottoms-Talon Of The Hawk-Au Revoir (Adios).json")
+
+overall_loudness <- json_file$lowlevel$loudness_ebu128$integrated
+spectral_energy <- json_file$lowlevel$spectral_energy$mean
+dissonance <- json_file$lowlevel$dissonance$mean
+pitch_salience <- json_file$lowlevel$pitch_salience$mean
+bpm <- json_file$rhythm$bpm
+beats_loudness <- json_file$rhythm$beats_loudness$mean
+danceability <- json_file$rhythm$danceability
+tuning_frequency <- json_file$tonal$tuning_frequency
+
+
+#########
+# Step 2
+#########
+files = list.files("EssentiaOutput")
+list.files <- files[which(str_count(list.files("EssentiaOutput"), ".json") >= 1)]
+
+main.df <- tibble() 
+
+for (json in list.files){
+  
+  filename <- json |>
+  str_sub(start = 1L, end = -6L) |> 
+  str_split(pattern = '-', simplify =T)
+  
+  json_file <- fromJSON(paste0("EssentiaOutput/", json))
+  
+  # create new row to add
+  new_row <- tibble(
+    artist = filename[1],
+    album = filename[2],
+    track = filename[3],
+    
+    overall_loudness     = json_file$lowlevel$loudness_ebu128$integrated,
+    spectral_energy      = json_file$lowlevel$spectral_energy$mean,
+    dissonance           = json_file$lowlevel$dissonance$mean,
+    pitch_salience       = json_file$lowlevel$pitch_salience$mean,
+    bpm                  = json_file$rhythm$bpm,
+    beats_loudness       = json_file$rhythm$beats_loudness$mean,
+    danceability         = json_file$rhythm$danceability,
+    tuning_frequency     = json_file$tonal$tuning_frequency )
+  
+    main.df <- main.df %>%
+    bind_rows(., new_row)
+}
+
+##########
+# Step 3
+##########
+#3.1
+model.output <- read_csv("EssentiaOutput/EssentiaModelOutput.csv")
+
+model.output <- model.output %>%
+  mutate(
+    #3.2
+    valence = rowMeans(select(., deam_valence, emo_valence, muse_valence)),
+    arousal = rowMeans(select(., deam_arousal, emo_arousal, muse_arousal)),
+    #3.3
+    aggressive = rowMeans(select(., eff_aggressive, nn_aggressive)),
+    happy = rowMeans(select(., eff_happy, nn_happy)),
+    party = rowMeans(select(., eff_party, nn_party)),
+    relaxed = rowMeans(select(., eff_relax, nn_relax)),
+    sad = rowMeans(select(., eff_sad, nn_sad)),
+    #3.4
+    acoustic = rowMeans(select(., eff_acoustic, nn_acoustic)),
+    electric = rowMeans(select(., eff_electronic, nn_electronic)),
+    #3.5
+    instrumental = rowMeans(select(., eff_instrumental, nn_instrumental)),
+    #3.6
+    timbreBright = eff_timbre_bright ) |>
+  #3.7
+  select(artist, album, track, valence, arousal, aggressive,
+         happy, party, relaxed, sad, acoustic, electric,
+         instrumental, timbreBright)
+
+
+##########
+# Step 4
+##########
+liwc.df <- read_csv("LIWCOutput/LIWCOutput.csv")
+
+merged.df <- main.df |>
+  inner_join(model.output, by = c("artist", "album", "track")) |>
+  inner_join(liwc.df, by = c("artist", "album", "track"))|>
+  rename(funct = "function") 
+
+
+########
+#Step 5
+########
+#writing a .csv without the track "Allentown"
+write_csv(merged.df[merged.df$track != "Allentown", ], "trainingdata.csv")
+#writing a .csv file with only "Allentown"
+write_csv(merged.df[merged.df$track == "Allentown", ], "testingdata.csv")
